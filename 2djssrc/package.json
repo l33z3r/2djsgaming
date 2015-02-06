@@ -1,11 +1,11 @@
 {
-  "name": "3D-canvas",
-  "description": "3D-canvas",
-  "version": "0.0.1",
-  "homepage": "",
+  "name": "2DJSGaming",
+  "description": "2DJSGaming",
+  "version": "0.1",
+  "homepage": "https://2djsgaming.blogspot.com/",
   "author": {
     "name": "Lee Farrell",
-    "url": ""
+    "url": "https://2djsgaming.blogspot.com/"
   },
   "engines": {
     "node": ">= 0.10.0"
