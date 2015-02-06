@@ -18,10 +18,11 @@ module.exports = function(grunt) {
         }
       }
     },
+
     clean: {
       js: ["src/javascripts/**/*", "!src/javascripts/bower_lib/**", "!src/javascripts/lib/**"]
     },
-    // Task configuration.
+
     coffee: {
       options: {
         bare: true
@@ -56,85 +57,6 @@ module.exports = function(grunt) {
       }
     },
 
-    connect: {
-      server: {
-        options: {
-          port: 8080,
-          base: 'dist',
-          keepalive: true
-        }
-      }
-    },
-
-    uglify: {
-      options: {
-        banner: '<%= banner %>',
-        // beautify: true,
-        // mangle: false,
-        compress: {
-          // drop_debugger: false,
-          global_defs: {
-            DEBUG: false
-          }
-        }
-      },
-      dist: {
-        src: 'src/javascripts/main-built.js',
-        dest: '../public/javascripts/main-built.js'
-      }
-    },
-
-    jshint: {
-      options: {
-        curly: true,
-        eqeqeq: true,
-        immed: true,
-        latedef: true,
-        newcap: true,
-        noarg: true,
-        sub: true,
-        undef: true,
-        unused: true,
-        boss: true,
-        eqnull: true,
-        browser: true,
-        globals: {}
-      },
-
-      gruntfile: {
-        src: 'Gruntfile.js'
-      },
-
-      lib_test: {
-        src: ['lib/**/*.js', 'test/**/*.js']
-      }
-    },
-
-    qunit: {
-      files: ['test/**/*.html']
-    },
-
-    watch: {
-      doreload: {
-        options: {
-          livereload: true
-        },
-        files: ['../public/**/*']
-      },
-      dist: {
-        files: ['src/index.haml', 'src/coffeescripts/**/*.coffee', 'src/sass/**/*.sass'],
-        tasks: ['dist'] 
-      }
-      // gruntfile: {
-      //   files: '<%= jshint.gruntfile.src %>',
-      //   tasks: ['jshint:gruntfile']
-      // },
-      // lib_test: {
-      //   files: '<%= jshint.lib_test.src %>',
-      // }      //   tasks: ['jshint:lib_test', 'qunit']
-
-    },
-
     copy: {
       assets: {
         files: [
@@ -151,36 +73,18 @@ module.exports = function(grunt) {
           // flattens results to a single level
           //{expand: true, flatten: true, src: ['path/**'], dest: 'dest/', filter: 'isFile'},
         ]
-      },
-
-      phonegap: {
-        files: [
-          //{expand: true, cwd: '../public/', src: ['**'], dest: '../../canvasgames_phonegap/'},
-
-          {expand: true, cwd: '../public/', src: 'game.html', dest: '../../canvasgames_phonegap/', rename: function(src, dest) { return "../../canvasgames_phonegap/index.html" }},
-          {expand: true, cwd: '../public/', src: 'images/', dest: '../../canvasgames_phonegap/'},
-          {expand: true, cwd: '../public/', src: 'javascripts/', dest: '../../canvasgames_phonegap/'},
-          {expand: true, cwd: '../public/', src: 'stylesheets/', dest: '../../canvasgames_phonegap/'},
-          {expand: true, cwd: 'src', src: 'config.xml', dest: '../../canvasgames_phonegap/'}
-        ]
       }
     }
   });
 
   // These plugins provide necessary tasks.
-  grunt.loadNpmTasks('grunt-contrib-uglify');
   grunt.loadNpmTasks('grunt-contrib-clean');
-  grunt.loadNpmTasks('grunt-contrib-qunit');
-  grunt.loadNpmTasks('grunt-contrib-jshint');
-  grunt.loadNpmTasks('grunt-contrib-watch');
   grunt.loadNpmTasks('grunt-contrib-requirejs');
-  grunt.loadNpmTasks('grunt-contrib-connect');
   grunt.loadNpmTasks('grunt-contrib-coffee');
   grunt.loadNpmTasks('grunt-contrib-sass');
   grunt.loadNpmTasks('grunt-haml2html');
   grunt.loadNpmTasks('grunt-contrib-copy');
 
-  //grunt.registerTask('default', ['haml', 'coffee', 'requirejs', 'jshint', 'qunit', 'uglify']);
-  grunt.registerTask('dist', ['haml', 'sass', 'clean', 'coffee', 'requirejs', 'copy:assets']);//, 'uglify']);
+  grunt.registerTask('dist', ['haml', 'sass', 'clean', 'coffee', 'requirejs', 'copy']);
   grunt.registerTask('default', 'dist');
 };
