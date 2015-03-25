@@ -1,8 +1,15 @@
 /*     
-  Playground 1.0.2
-  http://canvasquery.org
-  (c) 2012-2014 http://rezoner.net
+
+  Playground 1.56
+
+  http://canvasquery.com
+
+  (c) 2012-2015 http://rezoner.net
+
   Playground may be freely distributed under the MIT license.
+
+  + sound alias
+
 */
 
 function playground(args) {
@@ -54,9 +61,12 @@ function Playground(args) {
     smoothing: 1,
     scale: 1,
     preventKeyboardDefault: true,
-    preventContextMenu: true
-  }, args);
+    preventContextMenu: true,
+    paths: {
+      images: "images/"
+    }
 
+  }, args);
 
   if (!this.width || !this.height) this.fitToContainer = true;
 
@@ -73,13 +83,12 @@ function Playground(args) {
   if (!args.layer) {
     cq.smoothing = this.smoothing;
 
-    if (window.CocoonJS) {
+    if (navigator.isCocoonJS) {
       this.layer = cq.cocoon(1, 1);
       this.layer.appendTo(this.container);
       this.screen = this.layer;
     } else {
       this.layer = cq(1, 1);
-
       if (this.scaleToFit) {
         this.screen = cq(1, 1);
         this.screen.appendTo(this.container);
@@ -99,14 +108,14 @@ function Playground(args) {
 
   /* mouse */
 
-  this.mouse = new playground.Mouse(canvas);
+  this.mouse = new playground.Mouse(this, this.container);
   this.mouse.on("event", this.eventsHandler);
 
   this.mouse.preventContextMenu = this.preventContextMenu;
 
   /* touch */
 
-  this.touch = new playground.Touch(canvas);
+  this.touch = new playground.Touch(this, this.container);
   this.touch.on("event", this.eventsHandler);
 
   /* keyboard */
@@ -121,6 +130,12 @@ function Playground(args) {
   this.gamepads = new playground.Gamepads();
   this.gamepads.on("event", this.eventsHandler);
 
+  /* tweens */
+
+  this.tweens = new playground.TweenManager(this);
+
+  this.ease = playground.ease;
+
   /* window resize */
 
   window.addEventListener("resize", this.resizeHandler.bind(this));
@@ -132,6 +147,10 @@ function Playground(args) {
   this.videoRecorder = new playground.VideoRecorder(this);
 
   /* game loop */
+
+  this.lifetime = 0;
+  this.elapsed = 0;
+  this.delta = 0;
 
   var self = this;
 
@@ -148,16 +167,28 @@ function Playground(args) {
 
     var dt = delta / 1000;
 
+    self.lifetime += dt;
+    self.elapsed = dt;
+    self.delta = dt;
+
+    self.tweens.step(dt);
+
     if (self.loader.count <= 0) {
 
-      if (self.step) self.step(dt);
-      if (self.state.step) self.state.step(dt);
+      // if (self.step) self.step(dt);
+      // if (self.state.step) self.state.step(dt);
 
-      if (self.render) self.render(dt);
-      if (self.state.render) self.state.render(dt);
+      self.eventsHandler("step", dt)
+      self.eventsHandler("render", dt)
+      self.eventsHandler("postrender", dt)
 
-      if (self.postrender) self.postrender(dt);
-      if (self.state.postrender) self.state.postrender(dt);
+      // if (self.render) self.render(dt);
+      // if (self.state.render) self.state.render(dt);
+
+      // if (self.postrender) self.postrender(dt);
+      // if (self.state.postrender) self.state.postrender(dt);
+
+      self.loaderTookScreenshot = false;
 
     } else {
       self.renderLoader(dt);
@@ -173,6 +204,8 @@ function Playground(args) {
     }
 
     self.gamepads.step(dt);
+    self.sound.step(dt);
+    self.music.step(dt);
     self.videoRecorder.step(dt);
 
   };
@@ -192,13 +225,29 @@ function Playground(args) {
   this.loader = new playground.Loader();
 
   this.images = {};
-  this.sounds = {};
+  this.atlases = {};
+  this.data = {};
+
+  var audioContext = window.AudioContext || window.webkitAudioContext || window.mozAudioContext;
+
+  if (audioContext) {
+    this.audioContext = new audioContext;
+    this.sound = new Playground.Sound(this, this.audioContext);
+    this.music = new Playground.Sound(this, this.audioContext);
+  } else {
+    this.sound = new Playground.SoundFallback(this);
+    this.music = new Playground.SoundFallback(this);
+  }
 
   this.loadFoo(0.5);
 
   if (this.create) setTimeout(this.create.bind(this));
 
   this.loader.on("ready", function() {
+    self.foofooLoader = 0;
+  });
+
+  this.loader.once("ready", function() {
     if (self.ready) self.ready();
 
     self.ready = function() {};
@@ -213,6 +262,7 @@ Playground.prototype = {
   setState: function(state) {
     state.app = this;
 
+    if (this.state) this.screenshot = this.layer.cache();
     if (this.state && this.state.leave) this.state.leave();
 
     this.state = state;
@@ -224,6 +274,7 @@ Playground.prototype = {
 
     if (this[event]) this[event](data);
     if (this.state[event]) this.state[event](data);
+    if (this.state.proxy) this.state.proxy(event, data);
 
   },
 
@@ -296,7 +347,17 @@ Playground.prototype = {
     var width = this.width - x * 2;
     var y = this.height / 2 - height / 2 | 0;
 
+    if (!this.loaderTookScreenshot) {
+      this.loaderTookScreenshot = true;
+      this.screenshot = this.layer.cache();
+    }
+
     this.layer.clear("#000");
+    if (this.screenshot) {
+      this.layer.drawImage(this.screenshot, 0, 0);
+      this.layer.clear("rgba(0,0,0,0.4)");
+    }
+
     this.layer.strokeStyle("#fff").lineWidth(2).strokeRect(x, y, width, height);
     this.layer.fillStyle("#fff").fillRect(x, y, width * this.loader.progress | 0, height);
 
@@ -321,7 +382,155 @@ Playground.prototype = {
 
   },
 
+  loadAtlases: function() {
+
+
+    for (var i = 0; i < arguments.length; i++) {
+
+      var arg = arguments[i];
+
+      /* polymorphism at its finest */
+
+      if (typeof arg === "object") {
+
+        for (var key in arg) this.loadAtlases(arg[key]);
+
+      } else {
+
+        /* if argument is not an object/array let's try to load it */
+
+        this._loadAtlas(arg)
+
+      }
+    }
+
+  },
+
+  loadAtlas: function() {
+    return this.loadAtlases.apply(this, arguments);
+  },
+
+  _loadAtlas: function(filename) {
+
+    var fileinfo = filename.match(/(.*)\..*/);
+    var key = fileinfo ? fileinfo[1] : filename;
+
+    var loader = this.loader;
+
+    /* filename defaults to png */
+
+    if (!fileinfo) filename += ".png";
+
+    var path = "atlases/" + filename;
+
+    this.loader.add(path);
+
+    var atlas = this.atlases[key] = {};
+
+    var image = atlas.image = new Image;
+
+    image.addEventListener("load", function() {
+      loader.ready(path);
+    });
+
+    image.addEventListener("error", function() {
+      loader.error(path);
+    });
+
+    image.src = path;
+
+    /* data */
+
+    var url = "atlases/" + key + ".json";
+
+    var request = new XMLHttpRequest();
+
+    request.open("GET", url, true);
+
+    this.loader.add(url);
+
+    request.onload = function() {
+
+      var data = JSON.parse(this.response);
+
+      atlas.frames = [];
+
+      console.log(data.frames, atlas, key, url)
+
+      for (var i = 0; i < data.frames.length; i++) {
+        var frame = data.frames[i];
+
+        atlas.frames.push({
+          region: [frame.frame.x, frame.frame.y, frame.frame.w, frame.frame.h],
+          offset: [frame.spriteSourceSize.x || 0, frame.spriteSourceSize.y || 0],
+          width: frame.sourceSize.w,
+          height: frame.sourceSize.h
+        });
+      }
+
+      loader.ready(url);
+
+    }
+
+    request.send();
+  },
+
+  /* data/json */
+
+  loadData: function() {
+
+    for (var i = 0; i < arguments.length; i++) {
+
+      var arg = arguments[i];
+
+      if (typeof arg === "object") {
+
+        for (var key in arg) this.loadData(arg[key]);
+
+      } else {
+
+        var filename = arg;
+        var fileinfo = filename.match(/(.*)\..*/);
+        var key = fileinfo ? fileinfo[1] : filename;
+
+        if (!fileinfo) {
+          filename += ".json";
+        }
+
+        var ext = filename.split(".").pop();
+
+        var url = "data/" + filename;
+
+        var request = new XMLHttpRequest();
+
+        var app = this;
+
+        request.open("GET", url, true);
+
+        this.loader.add(url);
+
+        request.onload = function() {
+
+          if (ext === "json") {
+            app.data[key] = JSON.parse(this.responseText);
+          } else {
+            app.data[key] = this.responseText;
+          }
+
+          app.loader.ready(url);
+        }
+
+        request.send();
+
+      }
+    }
+  },
+
   /* images */
+
+  loadImage: function() {
+    return this.loadImages.apply(this, arguments);
+  },
 
   loadImages: function() {
 
@@ -333,7 +542,7 @@ Playground.prototype = {
 
       if (typeof arg === "object") {
 
-        for (var key in arg) this.addImages(arg[key]);
+        for (var key in arg) this.loadImages(arg[key]);
 
       } else {
 
@@ -350,7 +559,7 @@ Playground.prototype = {
 
         if (!fileinfo) filename += ".png";
 
-        var path = "images/" + filename;
+        var path = this.paths.images + filename;
 
         this.loader.add(path);
 
@@ -371,6 +580,10 @@ Playground.prototype = {
 
   /* sounds */
 
+  loadSound: function() {
+    return this.loadSounds.apply(this, arguments);
+  },
+
   loadSounds: function() {
 
     for (var i = 0; i < arguments.length; i++) {
@@ -384,32 +597,7 @@ Playground.prototype = {
         for (var key in arg) this.loadSounds(arg[key]);
 
       } else {
-
-        /* if argument is not an object/array let's try to load it */
-
-        var filename = arg;
-
-        var loader = this.loader;
-
-        var key = filename;
-
-        filename += "." + this.audioFormat;
-
-        var path = "sounds/" + filename;
-
-        this.loader.add(path);
-
-        var audio = this.sounds[key] = new Audio;
-
-        audio.addEventListener("canplay", function() {
-          loader.ready(path);
-        });
-
-        audio.addEventListener("error", function() {
-          loader.error(path);
-        });
-
-        audio.src = path;
+        this.sound.load(arg);
       }
     }
 
@@ -463,16 +651,21 @@ Playground.prototype = {
   },
 
   playSound: function(key, loop) {
-    var sound = this.sounds[key];
-    sound.currentTime = 0;
-    sound.loop = loop;
-    sound.play();
-    return sound;
+
+    if (!this.audioChannels) {
+      this.audioChannels = [];
+
+      for (var i = 0; i < 16; i++) this.audioChannels.push(new Audio);
+
+      this.audioChannelIndex = 0;
+    }
+
+    return this.sound.play(key, loop);
+
   },
 
   stopSound: function(sound) {
-    if (typeof sound === "string") sound = this.sounds[sound];
-    sound.pause();
+    this.sound.stop(sound);
   }
 
 
@@ -532,6 +725,7 @@ playground.Events.prototype = {
 
         if (listener.once) {
           this.listeners[event].splice(i--, 1);
+          len--;
         }
       }
     }
@@ -540,9 +734,11 @@ playground.Events.prototype = {
 
 /* Mouse */
 
-playground.Mouse = function(element) {
+playground.Mouse = function(parent, element) {
 
   var self = this;
+  this.parent = parent;
+
 
   playground.Events.call(this);
 
@@ -572,9 +768,26 @@ playground.Mouse = function(element) {
     if (self.preventContextMenu) e.preventDefault();
   });
 
+  element.requestPointerLock = element.requestPointerLock ||
+    element.mozRequestPointerLock ||
+    element.webkitRequestPointerLock;
+
+  document.exitPointerLock = document.exitPointerLock ||
+    document.mozExitPointerLock ||
+    document.webkitExitPointerLock;
 };
 
 playground.Mouse.prototype = {
+
+  lock: function() {
+    this.locked = true;
+    this.element.requestPointerLock();
+  },
+
+  unlock: function() {
+    this.locked = false;
+    document.exitPointerLock();
+  },
 
   getElementOffset: function(element) {
 
@@ -599,14 +812,35 @@ playground.Mouse.prototype = {
     this.elementOffset = this.getElementOffset(this.element);
   },
 
-  mousemove: function(e) {
+  mousemove: playground.throttle(function(e) {
+
     this.x = this.mousemoveEvent.x = (e.pageX - this.elementOffset.x - this.offsetX) / this.scale | 0;
     this.y = this.mousemoveEvent.y = (e.pageY - this.elementOffset.y - this.offsetY) / this.scale | 0;
 
     this.mousemoveEvent.original = e;
 
-    this.trigger("mousemove", this.mousemoveEvent);
-  },
+    if (this.locked) {
+      this.mousemoveEvent.movementX = e.movementX ||
+        e.mozMovementX ||
+        e.webkitMovementX ||
+        0;
+
+      this.mousemoveEvent.movementY = e.movementY ||
+        e.mozMovementY ||
+        e.webkitMovementY ||
+        0;
+    }
+
+    if (this.parent.mouseToTouch) {
+      //      if (this.left) {
+      this.mousemoveEvent.identifier = this.parent.keyboard.keys.ctrl ? 1 : 0;
+      this.trigger("touchmove", this.mousemoveEvent);
+      //      }
+    } else {
+      this.trigger("mousemove", this.mousemoveEvent);
+    }
+
+  }, 16),
 
   mousedown: function(e) {
 
@@ -619,11 +853,18 @@ playground.Mouse.prototype = {
 
     this[buttonName] = true;
 
-    this.trigger("mousedown", this.mousedownEvent);
+    if (this.parent.mouseToTouch) {
+      this.mousedownEvent.identifier = this.parent.keyboard.keys.ctrl ? 1 : 0;
+      this.trigger("touchmove", this.mousedownEvent);
+      this.trigger("touchstart", this.mousedownEvent);
+    } else {
+      this.trigger("mousedown", this.mousedownEvent);
+    }
+
   },
 
   mouseup: function(e) {
-    
+
     var buttonName = ["left", "middle", "right"][e.button];
 
     this.mouseupEvent.x = this.mousemoveEvent.x;
@@ -633,7 +874,12 @@ playground.Mouse.prototype = {
 
     this[buttonName] = false;
 
-    this.trigger("mouseup", this.mouseupEvent);
+    if (this.parent.mouseToTouch) {
+      this.mouseupEvent.identifier = this.parent.keyboard.keys.ctrl ? 1 : 0;
+      this.trigger("touchend", this.mouseupEvent);
+    } else {
+      this.trigger("mouseup", this.mouseupEvent);
+    }
   },
 
   mousewheel: function(e) {
@@ -641,6 +887,7 @@ playground.Mouse.prototype = {
     this.mousewheelEvent.y = this.mousemoveEvent.y;
     this.mousewheelEvent.button = ["none", "left", "middle", "right"][e.button];
     this.mousewheelEvent.original = e;
+    this.mousewheelEvent.identifier = 0;
 
     this[e.button] = false;
 
@@ -666,6 +913,7 @@ playground.Mouse.prototype = {
           absDelta = 0,
           absDeltaXY = 0,
           fn;
+
         event.type = "mousewheel";
 
         // Old school scrollwheel delta
@@ -710,9 +958,12 @@ playground.extend(playground.Mouse.prototype, playground.Events.prototype);
 
 /* Touch */
 
-playground.Touch = function(element) {
+playground.Touch = function(parent, element) {
 
   playground.Events.call(this);
+
+  this.parent = parent;
+
 
   this.element = element;
 
@@ -721,6 +972,8 @@ playground.Touch = function(element) {
   this.touchmoveEvent = {};
   this.touchstartEvent = {};
   this.touchendEvent = {};
+
+  this.touches = {};
 
   this.x = 0;
   this.y = 0;
@@ -760,41 +1013,65 @@ playground.Touch.prototype = {
   },
 
   touchmove: function(e) {
-    var touch = e.touches[0] || e.changedTouches[0];
 
-    this.x = this.touchmoveEvent.x = (touch.pageX - this.elementOffset.x - this.offsetX) / this.scale | 0;
-    this.y = this.touchmoveEvent.y = (touch.pageY - this.elementOffset.y - this.offsetY) / this.scale | 0;
+    for (var i = 0; i < e.changedTouches.length; i++) {
 
-    this.touchmoveEvent.original = e;
-    this.touchmoveEvent.identifier = e.identifier;
+      var touch = e.changedTouches[i];
 
-    this.trigger("touchmove", this.touchmoveEvent);
+      this.x = this.touchmoveEvent.x = (touch.pageX - this.elementOffset.x - this.offsetX) / this.scale | 0;
+      this.y = this.touchmoveEvent.y = (touch.pageY - this.elementOffset.y - this.offsetY) / this.scale | 0;
 
-    e.preventDefault();
+      this.touchmoveEvent.original = touch;
+      this.touchmoveEvent.identifier = touch.identifier;
+
+      this.touches[touch.identifier].x = this.touchmoveEvent.x;
+      this.touches[touch.identifier].y = this.touchmoveEvent.y;
+
+      this.trigger("touchmove", this.touchmoveEvent);
+
+      e.preventDefault();
+    }
   },
 
   touchstart: function(e) {
-    this.touchstartEvent.x = this.touchmoveEvent.x;
-    this.touchstartEvent.y = this.touchmoveEvent.y;
 
-    this.touchstartEvent.original = e;
-    this.touchstartEvent.identifier = e.identifier;
+    for (var i = 0; i < e.changedTouches.length; i++) {
 
-    this.pressed = true;
+      var touch = e.changedTouches[i];
 
-    this.trigger("touchstart", this.touchstartEvent);
+      this.x = this.touchstartEvent.x = (touch.pageX - this.elementOffset.x - this.offsetX) / this.scale | 0;
+      this.y = this.touchstartEvent.y = (touch.pageY - this.elementOffset.y - this.offsetY) / this.scale | 0;
+
+      this.touchstartEvent.original = e.touch;
+      this.touchstartEvent.identifier = touch.identifier;
+
+      this.touches[touch.identifier] = {
+        x: this.touchstartEvent.x,
+        y: this.touchstartEvent.y
+      };
+
+      this.trigger("touchstart", this.touchstartEvent);
+    }
+
   },
 
   touchend: function(e) {
-    this.touchendEvent.x = this.touchmoveEvent.x;
-    this.touchendEvent.y = this.touchmoveEvent.y;
+    for (var i = 0; i < e.changedTouches.length; i++) {
 
-    this.touchendEvent.original = e;
-    this.touchendEvent.identifier = e.identifier;
+      var touch = e.changedTouches[i];
 
-    this.pressed = false;
+      this.touchendEvent.x = (touch.pageX - this.elementOffset.x - this.offsetX) / this.scale | 0;
+      this.touchendEvent.y = (touch.pageY - this.elementOffset.y - this.offsetY) / this.scale | 0;
 
-    this.trigger("touchend", this.touchendEvent);
+      this.touchendEvent.original = touch;
+      this.touchendEvent.identifier = touch.identifier;
+
+      delete this.touches[touch.identifier];
+
+      this.trigger("touchend", this.touchendEvent);
+
+    }
+
   }
 
 };
@@ -1084,6 +1361,7 @@ playground.Loader.prototype = {
   },
 
   ready: function(id) {
+
     this.queue--;
 
     this.progress = 1 - this.queue / this.count;
@@ -1117,84 +1395,84 @@ CanvasQuery.Layer.prototype.playground = function(args) {
 window.Whammy = function() {
   function h(a, b) {
     for (var c = r(a), c = [{
-      id: 440786851,
-      data: [{
-        data: 1,
-        id: 17030
-      }, {
-        data: 1,
-        id: 17143
-      }, {
-        data: 4,
-        id: 17138
-      }, {
-        data: 8,
-        id: 17139
-      }, {
-        data: "webm",
-        id: 17026
-      }, {
-        data: 2,
-        id: 17031
-      }, {
-        data: 2,
-        id: 17029
-      }]
-    }, {
-      id: 408125543,
-      data: [{
-        id: 357149030,
+        id: 440786851,
         data: [{
-          data: 1E6,
-          id: 2807729
+          data: 1,
+          id: 17030
         }, {
-          data: "whammy",
-          id: 19840
+          data: 1,
+          id: 17143
         }, {
-          data: "whammy",
-          id: 22337
+          data: 4,
+          id: 17138
         }, {
-          data: s(c.duration),
-          id: 17545
+          data: 8,
+          id: 17139
+        }, {
+          data: "webm",
+          id: 17026
+        }, {
+          data: 2,
+          id: 17031
+        }, {
+          data: 2,
+          id: 17029
         }]
       }, {
-        id: 374648427,
+        id: 408125543,
         data: [{
-          id: 174,
+          id: 357149030,
           data: [{
-            data: 1,
-            id: 215
+            data: 1E6,
+            id: 2807729
           }, {
-            data: 1,
-            id: 25541
+            data: "whammy",
+            id: 19840
           }, {
-            data: 0,
-            id: 156
+            data: "whammy",
+            id: 22337
           }, {
-            data: "und",
-            id: 2274716
-          }, {
-            data: "V_VP8",
-            id: 134
-          }, {
-            data: "VP8",
-            id: 2459272
-          }, {
-            data: 1,
-            id: 131
-          }, {
-            id: 224,
+            data: s(c.duration),
+            id: 17545
+          }]
+        }, {
+          id: 374648427,
+          data: [{
+            id: 174,
             data: [{
-              data: c.width,
-              id: 176
+              data: 1,
+              id: 215
             }, {
-              data: c.height,
-              id: 186
+              data: 1,
+              id: 25541
+            }, {
+              data: 0,
+              id: 156
+            }, {
+              data: "und",
+              id: 2274716
+            }, {
+              data: "V_VP8",
+              id: 134
+            }, {
+              data: "VP8",
+              id: 2459272
+            }, {
+              data: 1,
+              id: 131
+            }, {
+              id: 224,
+              data: [{
+                data: c.width,
+                id: 176
+              }, {
+                data: c.height,
+                id: 186
+              }]
             }]
           }]
         }]
-      }]
-    }], e = 0, d = 0; e < a.length;) {
+      }], e = 0, d = 0; e < a.length;) {
       var g = [],
         f = 0;
       do g.push(a[e]), f += a[e].duration, e++; while (e < a.length && 3E4 > f);
@@ -1229,7 +1507,7 @@ window.Whammy = function() {
 
   function r(a) {
     for (var b = a[0].width, c = a[0].height, e = a[0].duration,
-      d = 1; d < a.length; d++) {
+        d = 1; d < a.length; d++) {
       if (a[d].width != b) throw "Frame " + (d + 1) + " has a different width";
       if (a[d].height != c) throw "Frame " + (d + 1) + " has a different height";
       if (0 > a[d].duration || 32767 < a[d].duration) throw "Frame " + (d + 1) + " has a weird duration (must be between 0 and 32767)";
@@ -1299,7 +1577,7 @@ window.Whammy = function() {
 
   function q(a) {
     for (var b = a.RIFF[0].WEBP[0], c = b.indexOf("\u009d\u0001*"),
-      e = 0, d = []; 4 > e; e++) d[e] = b.charCodeAt(c + 3 + e);
+        e = 0, d = []; 4 > e; e++) d[e] = b.charCodeAt(c + 3 + e);
     e = d[1] << 8 | d[0];
     c = e & 16383;
     e = d[3] << 8 | d[2];
@@ -1385,7 +1663,7 @@ playground.VideoRecorder.prototype = {
     playground.extend(this, {
       followMouse: false,
       framerate: 20,
-      scale: 1
+      scale: 1.0
     }, args);
 
     if (!this.region) {
@@ -1435,6 +1713,1110 @@ playground.VideoRecorder.prototype = {
   toggle: function(args) {
     if (this.encoder) this.stop();
     else this.start(args);
+  }
+
+};
+
+Playground.SoundInterface = {
+
+};
+
+Playground.Sound = function(parent, audioContext) {
+
+  this.parent = parent;
+
+  var canPlayMp3 = (new Audio).canPlayType("audio/mp3");
+  var canPlayOgg = (new Audio).canPlayType('audio/ogg; codecs="vorbis"');
+
+  if (canPlayMp3) this.audioFormat = "mp3";
+  else this.audioFormat = "ogg";
+
+  this.context = audioContext;
+
+  this.gainNode = this.context.createGain()
+  this.gainNode.connect(this.context.destination);
+
+  this.compressor = this.context.createDynamicsCompressor();
+  this.compressor.connect(this.gainNode);
+
+  this.output = this.gainNode;
+
+  this.gainNode.gain.value = 1.0;
+
+  this.pool = [];
+  this.volume = 1.0;
+
+  this.setMasterPosition(0, 0, 0);
+
+  this.loops = [];
+
+};
+
+Playground.Sound.prototype = {
+
+  buffers: {},
+  aliases: {},
+
+  alias: function(alias, source, volume, rate) {
+
+    this.aliases[alias] = {
+      source: source,
+      volume: volume,
+      rate: rate
+    };
+
+  },
+
+  setMaster: function(volume) {
+
+    this.volume = volume;
+
+    this.gainNode.gain.value = volume;
+
+  },
+
+  load: function(file) {
+
+    var url = "sounds/" + file + "." + this.audioFormat;
+    var sampler = this;
+
+    var request = new XMLHttpRequest();
+
+    request.open("GET", url, true);
+    request.responseType = "arraybuffer";
+
+    var id = this.parent.loader.add();
+
+    request.onload = function() {
+
+      sampler.context.decodeAudioData(this.response, function(decodedBuffer) {
+        sampler.buffers[file] = decodedBuffer;
+        sampler.parent.loader.ready(id);
+      });
+
+    }
+
+    request.send();
+
+  },
+
+  cleanArray: function(array, property) {
+    for (var i = 0, len = array.length; i < len; i++) {
+      if (array[i] === null || (property && array[i][property])) {
+        array.splice(i--, 1);
+        len--;
+      }
+    }
+  },
+
+  setMasterPosition: function(x, y, z) {
+
+    this.masterPosition = {
+      x: x,
+      y: y,
+      z: z
+    };
+
+    this.context.listener.setPosition(x, y, z)
+      // this.context.listener.setOrientation(0, 0, -1, 0, 1, 0);
+      // this.context.listener.dopplerFactor = 1;
+      // this.context.listener.speedOfSound = 343.3;
+  },
+
+  getSoundBuffer: function() {
+    if (!this.pool.length) {
+      for (var i = 0; i < 100; i++) {
+
+        var buffer, gain, panner;
+
+        var nodes = [
+          buffer = this.context.createBufferSource(),
+          gain = this.context.createGain(),
+          panner = this.context.createPanner()
+        ];
+
+        panner.distanceModel = "linear";
+
+        // 1 - rolloffFactor * (distance - refDistance) / (maxDistance - refDistance)
+        // refDistance / (refDistance + rolloffFactor * (distance - refDistance))
+        panner.refDistance = 1;
+        panner.maxDistance = 600;
+        panner.rolloffFactor = 1.0;
+
+
+        // panner.setOrientation(-1, -1, 0);
+
+        this.pool.push(nodes);
+
+        nodes[0].connect(nodes[1]);
+        // nodes[1].connect(nodes[2]);
+        nodes[1].connect(this.output);
+      }
+    }
+
+    return this.pool.pop();
+  },
+
+  play: function(name, loop) {
+
+    var alias = this.aliases[name];
+
+    var nodes = this.getSoundBuffer();
+
+    if(alias) name = alias.source;
+
+    bufferSource = nodes[0];
+    bufferSource.gainNode = nodes[1];
+    bufferSource.pannerNode = nodes[2];
+    bufferSource.buffer = this.buffers[name];
+    bufferSource.loop = loop || false;
+    bufferSource.key = name;
+
+    bufferSource.alias = alias;
+
+    this.setVolume(bufferSource, 1.0);
+    this.setPlaybackRate(bufferSource, 1.0);
+
+    if (this.loop) {
+      //  bufferSource.loopStart = this.loopStart;
+      // bufferSource.loopEnd = this.loopEnd;
+    }
+
+
+    bufferSource.start(0);
+
+    bufferSource.volumeLimit = 1;
+
+    this.setPosition(bufferSource, this.masterPosition.x, this.masterPosition.y, this.masterPosition.z);
+
+    return bufferSource;
+  },
+
+  stop: function(what) {
+
+    if (!what) return;
+
+    what.stop(0);
+
+  },
+
+  setPlaybackRate: function(sound, rate) {
+
+    if (!sound) return;
+
+    if (sound.alias) rate *= sound.alias.rate;
+
+    return sound.playbackRate.value = rate;
+  },
+
+  setPosition: function(sound, x, y, z) {
+
+    if (!sound) return;
+
+    sound.pannerNode.setPosition(x, y || 0, z || 0);
+  },
+
+  setVelocity: function(sound, x, y, z) {
+
+    if (!sound) return;
+
+    sound.pannerNode.setPosition(x, y || 0, z || 0);
+
+  },
+
+  getVolume: function(sound) {
+
+    if (!sound) return;
+
+    return sound.gainNode.gain.value;
+
+  },
+
+  setVolume: function(sound, volume) {
+
+    if (!sound) return;
+
+    if (sound.alias) volume *= sound.alias.volume;
+
+    return sound.gainNode.gain.value = Math.max(0, volume);
+  },
+
+  fadeOut: function(sound) {
+
+    if (!sound) return;
+
+    sound.fadeOut = true;
+
+    this.loops.push(sound);
+
+    return sound;
+
+  },
+
+  fadeIn: function(sound) {
+
+    if (!sound) return;
+
+    sound.fadeIn = true;
+
+    this.loops.push(sound);
+
+    return sound;
+
+  },
+
+  step: function(delta) {
+
+    for (var i = 0; i < this.loops.length; i++) {
+
+      var loop = this.loops[i];
+
+      if (loop.fadeIn) {
+        var volume = this.getVolume(loop);
+        volume = this.setVolume(loop, Math.min(1.0, volume + delta * 0.5));
+
+        if (volume >= 1.0) {
+          this.loops.splice(i--, 1);
+          this.stop(loop);
+        }
+      }
+
+      if (loop.fadeOut) {
+        var volume = this.getVolume(loop);
+        volume = this.setVolume(loop, Math.min(1.0, volume - delta * 0.5));
+
+        if (volume <= 0) {
+          this.loops.splice(i--, 1);
+          this.stop(loop);
+        }
+      }
+
+    }
+
+  }
+
+};
+
+playground.extend(Playground.Sound.prototype, Playground.SoundInterface);
+
+Playground.SoundFallback = function(parent) {
+
+  this.parent = parent;
+
+  var canPlayMp3 = (new Audio).canPlayType("audio/mp3");
+  var canPlayOgg = (new Audio).canPlayType('audio/ogg; codecs="vorbis"');
+
+  if (canPlayMp3) this.audioFormat = "mp3";
+  else this.audioFormat = "ogg";
+
+};
+
+Playground.SoundFallback.prototype = {
+
+  samples: {},
+
+  setMaster: function(volume) {
+
+    this.volume = volume;
+
+  },
+
+  setMasterPosition: function() {
+
+  },
+
+  setPosition: function(x, y, z) {
+    return;
+  },
+
+  load: function(file) {
+
+    var url = "sounds/" + file + "." + this.audioFormat;
+
+    var loader = this.parent.loader;
+
+    this.parent.loader.add(url);
+
+    var audio = this.samples[file] = new Audio;
+
+    audio.addEventListener("canplay", function() {
+      loader.ready(url);
+    });
+
+    audio.addEventListener("error", function() {
+      loader.error(url);
+    });
+
+    audio.src = url;
+
+
+  },
+
+  play: function(key, loop) {
+
+    var sound = this.samples[key];
+
+    sound.currentTime = 0;
+    sound.loop = loop;
+    sound.play();
+
+    return sound;
+
+  },
+
+  stop: function(what) {
+
+    if (!what) return;
+
+    what.pause();
+
+  },
+
+  step: function(delta) {
+
+  },
+
+  setPlaybackRate: function(sound, rate) {
+
+    return;
+  },
+
+  setVolume: function(sound, volume) {
+
+    sound.volume = volume * this.volume;
+
+  },
+
+  setPosition: function() {
+
+  }
+
+
+};
+
+playground.extend(Playground.SoundFallback.prototype, Playground.SoundInterface);
+
+/* easing */
+
+/*     
+
+  Ease 1.0
+  
+  http://canvasquery.com
+  
+  (c) 2015 by Rezoner - http://rezoner.net
+
+  `ease` may be freely distributed under the MIT license.
+
+*/
+
+(function() {
+
+  var ease = function(progress, easing) {
+
+    if (typeof ease.cache[easing] === "function") {
+
+      return ease.cache[easing](progress);
+
+    } else {
+
+      return ease.spline(progress, easing || ease.defaultEasing);
+
+    }
+
+  };
+
+  var extend = function() {
+    for (var i = 1; i < arguments.length; i++) {
+      for (var j in arguments[i]) {
+        arguments[0][j] = arguments[i][j];
+      }
+    }
+
+    return arguments[0];
+  };
+
+  extend(ease, {          
+
+    defaultEasing: "016",
+
+    cache: {
+
+      linear: function(t) {
+        return t
+      },
+
+      inQuad: function(t) {
+        return t * t
+      },
+      outQuad: function(t) {
+        return t * (2 - t)
+      },
+      inOutQuad: function(t) {
+        return t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      },
+      inCubic: function(t) {
+        return t * t * t
+      },
+      outCubic: function(t) {
+        return (--t) * t * t + 1
+      },
+      inOutCubic: function(t) {
+        return t < .5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1
+      },
+      inQuart: function(t) {
+        return t * t * t * t
+      },
+      outQuart: function(t) {
+        return 1 - (--t) * t * t * t
+      },
+      inOutQuart: function(t) {
+        return t < .5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t
+      },
+      inQuint: function(t) {
+        return t * t * t * t * t
+      },
+      outQuint: function(t) {
+        return 1 + (--t) * t * t * t * t
+      },
+      inOutQuint: function(t) {
+        return t < .5 ? 16 * t * t * t * t * t : 1 + 16 * (--t) * t * t * t * t
+      },
+      inSine: function(t) {
+        return -1 * Math.cos(t / 1 * (Math.PI * 0.5)) + 1;
+      },
+      outSine: function(t) {
+        return Math.sin(t / 1 * (Math.PI * 0.5));
+      },
+      inOutSine: function(t) {
+        return -1 / 2 * (Math.cos(Math.PI * t) - 1);
+      },
+      inExpo: function(t) {
+        return (t == 0) ? 0 : Math.pow(2, 10 * (t - 1));
+      },
+      outExpo: function(t) {
+        return (t == 1) ? 1 : (-Math.pow(2, -10 * t) + 1);
+      },
+      inOutExpo: function(t) {
+        if (t == 0) return 0;
+        if (t == 1) return 1;
+        if ((t /= 1 / 2) < 1) return 1 / 2 * Math.pow(2, 10 * (t - 1));
+        return 1 / 2 * (-Math.pow(2, -10 * --t) + 2);
+      },
+      inCirc: function(t) {
+        return -1 * (Math.sqrt(1 - t * t) - 1);
+      },
+      outCirc: function(t) {
+        return Math.sqrt(1 - (t = t - 1) * t);
+      },
+      inOutCirc: function(t) {
+        if ((t /= 1 / 2) < 1) return -1 / 2 * (Math.sqrt(1 - t * t) - 1);
+        return 1 / 2 * (Math.sqrt(1 - (t -= 2) * t) + 1);
+      },
+      inElastic: function(t) {
+        var s = 1.70158;
+        var p = 0;
+        var a = 1;
+        if (t == 0) return 0;
+        if (t == 1) return 1;
+        if (!p) p = 0.3;
+        if (a < 1) {
+          a = 1;
+          var s = p / 4;
+        } else var s = p / (2 * Math.PI) * Math.asin(1 / a);
+        return -(a * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - s) * (2 * Math.PI) / p));
+      },
+      outElastic: function(t) {
+        var s = 1.70158;
+        var p = 0;
+        var a = 1;
+        if (t == 0) return 0;
+        if (t == 1) return 1;
+        if (!p) p = 0.3;
+        if (a < 1) {
+          a = 1;
+          var s = p / 4;
+        } else var s = p / (2 * Math.PI) * Math.asin(1 / a);
+        return a * Math.pow(2, -10 * t) * Math.sin((t - s) * (2 * Math.PI) / p) + 1;
+      },
+      inOutElastic: function(t) {
+        var s = 1.70158;
+        var p = 0;
+        var a = 1;
+        if (t == 0) return 0;
+        if ((t /= 1 / 2) == 2) return 1;
+        if (!p) p = (0.3 * 1.5);
+        if (a < 1) {
+          a = 1;
+          var s = p / 4;
+        } else var s = p / (2 * Math.PI) * Math.asin(1 / a);
+        if (t < 1) return -.5 * (a * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - s) * (2 * Math.PI) / p));
+        return a * Math.pow(2, -10 * (t -= 1)) * Math.sin((t - s) * (2 * Math.PI) / p) * 0.5 + 1;
+      },
+      inBack: function(t, s) {
+        if (s == undefined) s = 1.70158;
+        return 1 * t * t * ((s + 1) * t - s);
+      },
+      outBack: function(t, s) {
+        if (s == undefined) s = 1.70158;
+        return 1 * ((t = t / 1 - 1) * t * ((s + 1) * t + s) + 1);
+      },
+      inOutBack: function(t, s) {
+        if (s == undefined) s = 1.70158;
+        if ((t /= 1 / 2) < 1) return 1 / 2 * (t * t * (((s *= (1.525)) + 1) * t - s));
+        return 1 / 2 * ((t -= 2) * t * (((s *= (1.525)) + 1) * t + s) + 2);
+      },
+      inBounce: function(t) {
+        return 1 - this.outBounce(1 - t);
+      },
+      outBounce: function(t) {
+        if ((t /= 1) < (1 / 2.75)) {
+          return (7.5625 * t * t);
+        } else if (t < (2 / 2.75)) {
+          return (7.5625 * (t -= (1.5 / 2.75)) * t + .75);
+        } else if (t < (2.5 / 2.75)) {
+          return (7.5625 * (t -= (2.25 / 2.75)) * t + .9375);
+        } else {
+          return (7.5625 * (t -= (2.625 / 2.75)) * t + .984375);
+        }
+      },
+      inOutBounce: function(t) {
+        if (t < 1 / 2) return this.inBounce(t * 2) * 0.5;
+        return this.outBounce(t * 2 - 1) * 0.5 + 0.5;
+      }
+    },
+
+    translateEasing: function(key) {
+
+      if (!this.cache[key]) {
+        var array = key.split('');
+
+        var sign = 1;
+        var signed = false;
+
+        for (var i = 0; i < array.length; i++) {
+
+          var char = array[i];
+
+          if (char === "-") {
+            sign = -1;
+            signed = true;
+            array.splice(i--, 1);
+          } else if (char === "+") {
+            sign = 1;
+            array.splice(i--, 1);
+          } else array[i] = parseInt(array[i], 16) * sign;
+
+        }
+
+        var min = Math.min.apply(null, array);
+        var max = Math.max.apply(null, array);
+        var diff = max - min;
+        var cache = [];
+        var normalized = [];
+
+        for (var i = 0; i < array.length; i++) {
+          if (signed) {
+            var diff = Math.max(Math.abs(min), Math.abs(max))
+            normalized.push((array[i]) / diff);
+          } else {
+            var diff = max - min;
+            normalized.push((array[i] - min) / diff);
+          }
+        }
+
+        this.cache[key] = normalized;
+
+      }
+
+      return this.cache[key]
+
+    },
+
+    /* 
+      
+      Cubic-spline interpolation by Ivan Kuckir
+
+      http://blog.ivank.net/interpolation-with-cubic-splines.html
+
+      With slight modifications by Morgan Herlocker
+
+      https://github.com/morganherlocker/cubic-spline
+
+    */
+
+    splineK: {},
+    splineX: {},
+    splineY: {},
+
+    insertIntermediateValues: function(a) {
+      var result = [];
+      for (var i = 0; i < a.length; i++) {
+        result.push(a[i]);
+
+        if (i < a.length - 1) result.push(a[i + 1] + (a[i] - a[i + 1]) * 0.6);
+      }
+
+      return result;
+    },
+
+    spline: function(x, key) {
+
+      if (!this.splineK[key]) {
+
+        var xs = [];
+        var ys = this.translateEasing(key);
+
+        // ys = this.insertIntermediateValues(ys);
+
+        if (!ys.length) return 0;
+
+        for (var i = 0; i < ys.length; i++) xs.push(i * (1 / (ys.length - 1)));
+
+        var ks = xs.map(function() {
+          return 0
+        });
+
+        ks = this.getNaturalKs(xs, ys, ks);
+
+        this.splineX[key] = xs;
+        this.splineY[key] = ys;
+        this.splineK[key] = ks;
+
+      }
+
+      if (x > 1) return this.splineY[key][this.splineY[key].length - 1];
+
+      var ks = this.splineK[key];
+      var xs = this.splineX[key];
+      var ys = this.splineY[key];
+
+      var i = 1;
+
+      while (xs[i] < x) i++;
+
+      var t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+      var a = ks[i - 1] * (xs[i] - xs[i - 1]) - (ys[i] - ys[i - 1]);
+      var b = -ks[i] * (xs[i] - xs[i - 1]) + (ys[i] - ys[i - 1]);
+      var q = (1 - t) * ys[i - 1] + t * ys[i] + t * (1 - t) * (a * (1 - t) + b * t);
+
+      /*
+      var py = ys[i - 2];
+      var cy = ys[i - 1];
+      var ny = (i < ys.length - 1) ? ys[i] : ys[i - 1];
+
+      if (q > ny) {
+        var diff = (q - py);
+        //q = py + diff;
+
+      }
+
+    if (cy === ny && cy === py) q = py;
+    */
+
+
+      return q;
+    },
+
+    getNaturalKs: function(xs, ys, ks) {
+      var n = xs.length - 1;
+      var A = this.zerosMat(n + 1, n + 2);
+
+      for (var i = 1; i < n; i++) // rows
+      {
+        A[i][i - 1] = 1 / (xs[i] - xs[i - 1]);
+        A[i][i] = 2 * (1 / (xs[i] - xs[i - 1]) + 1 / (xs[i + 1] - xs[i]));
+        A[i][i + 1] = 1 / (xs[i + 1] - xs[i]);
+        A[i][n + 1] = 3 * ((ys[i] - ys[i - 1]) / ((xs[i] - xs[i - 1]) * (xs[i] - xs[i - 1])) + (ys[i + 1] - ys[i]) / ((xs[i + 1] - xs[i]) * (xs[i + 1] - xs[i])));
+      }
+
+      A[0][0] = 2 / (xs[1] - xs[0]);
+      A[0][1] = 1 / (xs[1] - xs[0]);
+      A[0][n + 1] = 3 * (ys[1] - ys[0]) / ((xs[1] - xs[0]) * (xs[1] - xs[0]));
+
+      A[n][n - 1] = 1 / (xs[n] - xs[n - 1]);
+      A[n][n] = 2 / (xs[n] - xs[n - 1]);
+      A[n][n + 1] = 3 * (ys[n] - ys[n - 1]) / ((xs[n] - xs[n - 1]) * (xs[n] - xs[n - 1]));
+
+      return this.solve(A, ks);
+    },
+
+    solve: function(A, ks) {
+      var m = A.length;
+      for (var k = 0; k < m; k++) // column
+      {
+        // pivot for column
+        var i_max = 0;
+        var vali = Number.NEGATIVE_INFINITY;
+        for (var i = k; i < m; i++)
+          if (A[i][k] > vali) {
+            i_max = i;
+            vali = A[i][k];
+          }
+        this.splineSwapRows(A, k, i_max);
+
+        // for all rows below pivot
+        for (var i = k + 1; i < m; i++) {
+          for (var j = k + 1; j < m + 1; j++)
+            A[i][j] = A[i][j] - A[k][j] * (A[i][k] / A[k][k]);
+          A[i][k] = 0;
+        }
+      }
+      for (var i = m - 1; i >= 0; i--) // rows = columns
+      {
+        var v = A[i][m] / A[i][i];
+        ks[i] = v;
+        for (var j = i - 1; j >= 0; j--) // rows
+        {
+          A[j][m] -= A[j][i] * v;
+          A[j][i] = 0;
+        }
+      }
+      return ks;
+    },
+
+    zerosMat: function(r, c) {
+      var A = [];
+      for (var i = 0; i < r; i++) {
+        A.push([]);
+        for (var j = 0; j < c; j++) A[i].push(0);
+      }
+      return A;
+    },
+
+    splineSwapRows: function(m, k, l) {
+      var p = m[k];
+      m[k] = m[l];
+      m[l] = p;
+    }
+  });
+
+  playground.ease = ease;
+
+})();
+
+/* TweenManager */
+
+playground.Tween = function(parent, context) {
+
+  this.parent = parent;
+  this.context = context;
+
+  playground.extend(this, {
+
+    actions: [],
+    index: -1,
+
+    prevEasing: "045",
+    prevDuration: 0.5
+
+  });
+
+  this.current = false;
+
+};
+
+playground.Tween.prototype = {
+
+  add: function(properties, duration, easing) {
+
+    if (duration) this.prevDuration = duration;
+    else duration = 0.5;
+    if (easing) this.prevEasing = easing;
+    else easing = "045";
+
+    this.actions.push([properties, duration, easing]);
+
+    return this;
+
+  },
+
+  to: function(properties, duration, easing) {
+    return this.add(properties, duration, easing);
+  },
+
+  loop: function() {
+
+    this.looped = true;
+
+    return this;
+
+  },
+
+  repeat: function(times) {
+
+    this.actions.push(["repeat", times]);
+
+  },
+
+  wait: function(time) {
+
+    this.actions.push(["wait", time]);
+
+    return this;
+
+  },
+
+  delay: function(time) {
+
+    this.actions.push(["wait", time]);
+
+  },
+
+  stop: function() {
+
+    this.parent.remove(this);
+
+    return this;
+
+  },
+
+  play: function() {
+
+    this.parent.add(this);
+
+    return this;
+
+  },
+
+
+  end: function() {
+
+    var lastAnimationIndex = 0;
+
+    for (var i = this.index + 1; i < this.actions.length; i++) {
+      if (typeof this.actions[i][0] === "object") lastAnimationIndex = i;
+    }
+
+    this.index = lastAnimationIndex - 1;
+    this.next();
+    this.delta = this.duration;
+    this.step(0);
+
+    return this;
+
+  },
+
+  forward: function() {
+
+    this.delta = this.duration;
+    this.step(0);
+
+  },
+
+  rewind: function() {
+
+    this.delta = 0;
+    this.step(0);
+
+  },
+
+  next: function() {
+
+    this.delta = 0;
+
+    this.index++;
+
+    if (this.index >= this.actions.length) {
+
+      if (this.looped) {
+        this.index = 0;
+      } else {
+        this.parent.remove(this);
+        return;
+      }
+    }
+
+    this.current = this.actions[this.index];
+
+    if (this.current[0] === "wait") {
+
+      this.duration = this.current[1];
+      this.currentAction = "wait";
+
+    } else {
+
+      /* calculate changes */
+
+      var properties = this.current[0];
+
+      /* keep keys as array for 0.0001% performance boost */
+
+      this.keys = Object.keys(properties);
+
+      this.change = [];
+      this.before = [];
+      this.types = [];
+
+      for (i = 0; i < this.keys.length; i++) {
+        var key = this.keys[i];
+
+        if (typeof this.context[key] === "number") {
+          this.before.push(this.context[key]);
+          this.change.push(properties[key] - this.context[key]);
+          this.types.push(0);
+        } else {
+          var before = cq.color(this.context[key]);
+
+          this.before.push(before);
+
+          var after = cq.color(properties[key]);
+
+          var temp = [];
+
+          for (var j = 0; j < 3; j++) {
+            temp.push(after[j] - before[j]);
+          }
+
+          this.change.push(temp);
+
+          this.types.push(1);
+        }
+
+      }
+
+      this.currentAction = "animate";
+
+      this.duration = this.current[1];
+      this.easing = this.current[2];
+
+    }
+
+
+  },
+
+  prev: function() {
+
+  },
+
+  step: function(delta) {
+    this.delta += delta;
+
+    if (!this.current) this.next();
+
+    switch (this.currentAction) {
+
+      case "animate":
+        this.doAnimate(delta);
+        break;
+
+      case "wait":
+        this.doWait(delta);
+        break;
+
+    }
+
+  },
+
+  doAnimate: function(delta) {
+
+    this.progress = Math.min(1, this.delta / this.duration);
+
+    var mod = playground.ease(this.progress, this.easing);
+
+    for (var i = 0; i < this.keys.length; i++) {
+
+      var key = this.keys[i];
+
+      switch (this.types[i]) {
+
+        /* number */
+
+        case 0:
+
+          this.context[key] = this.before[i] + this.change[i] * mod;
+
+          break;
+
+          /* color */
+
+        case 1:
+
+          var change = this.change[i];
+          var before = this.before[i];
+          var color = [];
+
+          for (var j = 0; j < 3; j++) {
+            color.push(before[j] + change[j] * mod | 0);
+          }
+
+          this.context[key] = "rgb(" + color.join(",") + ")";
+
+          break;
+      }
+    }
+
+    if (this.progress >= 1) {
+      this.next();
+    }
+
+  },
+
+  doWait: function(delta) {
+
+    if (this.delta >= this.duration) this.next();
+
+  }
+
+};
+
+playground.TweenManager = function(parent) {
+
+  this.tweens = [];
+
+  if (parent) {
+    this.parent = parent;
+    this.parent.tween = this.tween.bind(this);
+  }
+
+  this.delta = 0;
+
+};
+
+playground.TweenManager.prototype = {
+
+  defaultEasing: "128",
+
+  tween: function(context) {
+
+    var tween = new playground.Tween(this, context);
+
+    this.add(tween);
+
+    return tween;
+
+  },
+
+  step: function(delta) {
+
+    this.delta += delta;
+
+    for (var i = 0; i < this.tweens.length; i++) {
+
+      var tween = this.tweens[i];
+
+      tween.step(delta);
+
+      if (tween._remove) this.tweens.splice(i--, 1);
+
+    }
+
+  },
+
+  add: function(tween) {
+
+    tween._remove = false;
+
+    var index = this.tweens.indexOf(tween);
+
+    if (index === -1) this.tweens.push(tween);
+
+  },
+
+  remove: function(tween) {
+
+    tween._remove = true;
+
   }
 
 };

@@ -1,9 +1,17 @@
 /*     
- Canvas Query 1.12
- http://canvasquery.org
- (c) 2012-2014 http://rezoner.net
- Canvas Query may be freely distributed under the MIT license.
- */
+
+  Canvas Query 1.24
+  
+  http://canvasquery.com
+  
+  (c) 2012-2015 http://rezoner.net
+  
+  Canvas Query may be freely distributed under the MIT license.
+
+  ! fixed color parsers
+
+*/
+
 
 (function() {
 
@@ -43,6 +51,7 @@
   };
 
   cq.lineSpacing = 1.0;
+  cq.defaultFont = "Arial";
 
   cq.cocoon = function(selector) {
     if (arguments.length === 0) {
@@ -92,6 +101,37 @@
     }
   };
 
+  /* fast.js */
+
+  cq.fastApply = function(subject, thisContext, args) {
+
+    switch (args.length) {
+      case 0:
+        return subject.call(thisContext);
+      case 1:
+        return subject.call(thisContext, args[0]);
+      case 2:
+        return subject.call(thisContext, args[0], args[1]);
+      case 3:
+        return subject.call(thisContext, args[0], args[1], args[2]);
+      case 4:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3]);
+      case 5:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3], args[4]);
+      case 6:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3], args[4], args[5]);
+      case 7:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+      case 8:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
+      case 9:
+        return subject.call(thisContext, args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
+      default:
+        return subject.apply(thisContext, args);
+    }
+
+  };
+
   cq.extend(cq, {
 
     smoothing: true,
@@ -131,8 +171,8 @@
       for (var j = 0; j < rgbPalette.length; j++) {
         var rgbVal = rgbPalette[j];
         var rDif = Math.abs(imgData[0] - rgbVal[0]),
-            gDif = Math.abs(imgData[1] - rgbVal[1]),
-            bDif = Math.abs(imgData[2] - rgbVal[2]);
+          gDif = Math.abs(imgData[1] - rgbVal[1]),
+          bDif = Math.abs(imgData[2] - rgbVal[2]);
         difList.push(rDif + gDif + bDif);
       }
 
@@ -206,7 +246,7 @@
 
       r /= 255, g /= 255, b /= 255;
       var max = Math.max(r, g, b),
-          min = Math.min(r, g, b);
+        min = Math.min(r, g, b);
       var h, s, l = (max + min) / 2;
 
       if (max == min) {
@@ -268,7 +308,7 @@
 
       r = r / 255, g = g / 255, b = b / 255;
       var max = Math.max(r, g, b),
-          min = Math.min(r, g, b);
+        min = Math.min(r, g, b);
       var h, s, v = max;
 
       var d = max - min;
@@ -393,8 +433,11 @@
   cq.Layer = function(canvas) {
     this.context = canvas.getContext("2d");
     this.canvas = canvas;
+    this.alignX = 0;
+    this.alignY = 0;
+    this.aligned = false;
     this.update();
-  }
+  };
 
   cq.Layer.prototype = {
 
@@ -430,13 +473,140 @@
     ra: function() {
       return this.a(this.previousAlpha);
     },
+    /*
+        drawImage: function() {
+
+          if (!this.alignX && !this.alignY) {
+            this.context.call
+          }
+
+            return this;
+
+
+        },
+
+        restore: function() {
+          this.context.restore();
+          this.alignX = 0;
+          this.alignY = 0;
+        },
+        */
+
+    realign: function() {
+
+      this.alignX = this.prevAlignX;
+      this.alignY = this.prevAlignY;
+
+      return this;
+
+    },
+
+    align: function(x, y) {
+
+      if (typeof y === "undefined") y = x;
+
+      this.alignX = x;
+      this.alignY = y;
+
+      return this;
+    },
+
+
+    /* save translate align rotate scale */
+
+    stars: function(x, y, alignX, alignY, rotation, scaleX, scaleY) {
+
+      if (typeof alignX === "undefined") alignX = 0.5;
+      if (typeof alignY === "undefined") alignY = 0.5;
+      if (typeof rotation === "undefined") rotation = 0;
+      if (typeof scaleX === "undefined") scaleX = 1.0;
+      if (typeof scaleY === "undefined") scaleY = scaleX;
+
+      this.save();
+      this.translate(x, y);
+      this.align(alignX, alignY);
+      this.rotate(rotation);
+      this.scale(scaleX, scaleY);
+
+      return this;
+    },
+
+    tars: function(x, y, alignX, alignY, rotation, scaleX, scaleY) {
+
+      if (typeof alignX === "undefined") alignX = 0.5;
+      if (typeof alignY === "undefined") alignY = 0.5;
+      if (typeof rotation === "undefined") rotation = 0;
+      if (typeof scaleX === "undefined") scaleX = 1.0;
+      if (typeof scaleY === "undefined") scaleY = scaleX;
+
+      this.translate(x, y);
+      this.align(alignX, alignY);
+      this.rotate(rotation);
+      this.scale(scaleX, scaleY);
+
+      return this;
+
+    },
+
+    drawImage: function() {
+
+
+      if (this.alignX || this.alignY) {
+        if (arguments.length === 3) {
+          arguments[1] -= arguments[0].width * this.alignX | 0;
+          arguments[2] -= arguments[0].height * this.alignY | 0;
+        } else if (arguments.length === 9) {
+          arguments[5] -= arguments[7] * this.alignX | 0;
+          arguments[6] -= arguments[8] * this.alignY | 0;
+        }
+      }
+
+      cq.fastApply(this.context.drawImage, this.context, arguments);
+
+      return this;
+
+    },
+
+    save: function() {
+      this.prevAlignX = this.alignX;
+      this.prevAlignY = this.alignY;
+
+      this.context.save();
+
+      return this;
+    },
+
+    restore: function() {
+
+      this.realign();
+      this.context.restore();
+      return this;
+    },
+
+    drawTile: function(image, x, y, frameX, frameY, frameWidth, frameHeight, frames, frame) {
+
+    },
+
+    drawAtlasFrame: function(atlas, frame, x, y) {
+
+      var frame = atlas.frames[frame];
+
+      this.drawRegion(
+        atlas.image,
+        frame.region,
+        x - frame.width * this.alignX + frame.offset[0] + frame.region[2] * this.alignX, y - frame.height * this.alignY + frame.offset[1] + frame.region[3] * this.alignY
+      );
+
+      return this;
+
+    },
 
     drawRegion: function(image, region, x, y, scale) {
       scale = scale || 1;
 
       return this.drawImage(
-          image, region[0], region[1], region[2], region[3],
-          x | 0, y | 0, region[2] * scale | 0, region[3] * scale | 0
+        image, region[0], region[1], region[2], region[3],
+        x | 0, y | 0, region[2] * scale | 0, region[3] * scale | 0
       );
     },
 
@@ -566,7 +736,7 @@
 
     resize: function(width, height) {
       var w = width,
-          h = height;
+        h = height;
 
       if (arguments.length === 1) {
         w = arguments[0] * this.canvas.width | 0;
@@ -689,8 +859,8 @@
         for (var j = 0; j < rgbPalette.length; j++) {
           var rgbVal = rgbPalette[j];
           var rDif = Math.abs(imgData.data[i] - rgbVal[0]),
-              gDif = Math.abs(imgData.data[i + 1] - rgbVal[1]),
-              bDif = Math.abs(imgData.data[i + 2] - rgbVal[2]);
+            gDif = Math.abs(imgData.data[i + 1] - rgbVal[1]),
+            bDif = Math.abs(imgData.data[i + 2] - rgbVal[2]);
           difList.push(rDif + gDif + bDif);
         }
 
@@ -712,12 +882,12 @@
 
         //imgData.data[i + 3] = imgData.data[i + 3] > 128 ? 255 : 0;
         /*
-         if (i % 3 === 0) {
-         imgData.data[i] -= cq.limitValue(imgData.data[i] - 50, 0, 255);
-         imgData.data[i + 1] -= cq.limitValue(imgData.data[i + 1] - 50, 0, 255);
-         imgData.data[i + 2] -= cq.limitValue(imgData.data[i + 2] - 50, 0, 255);
-         }
-         */
+        if (i % 3 === 0) {
+          imgData.data[i] -= cq.limitValue(imgData.data[i] - 50, 0, 255);
+          imgData.data[i + 1] -= cq.limitValue(imgData.data[i + 1] - 50, 0, 255);
+          imgData.data[i + 2] -= cq.limitValue(imgData.data[i + 2] - 50, 0, 255);
+        }
+        */
 
       }
 
@@ -758,6 +928,18 @@
       this.closePath();
 
       return this;
+    },
+
+    fillPolygon: function(polygon) {
+      this.beginPath();
+      this.polygon(polygon);
+      this.fill();
+    },
+
+    strokePolygon: function(polygon) {
+      this.beginPath();
+      this.polygon(polygon);
+      this.stroke();
     },
 
     colorToMask: function(color, inverted) {
@@ -993,7 +1175,7 @@
       var data = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
       var pixels = data.data;
       var r, g, b, a, h, s, l, hsl = [],
-          newPixel = [];
+        newPixel = [];
 
       for (var i = 0, len = pixels.length; i < len; i += 4) {
         hsl = cq.rgbToHsl(pixels[i + 0], pixels[i + 1], pixels[i + 2]);
@@ -1025,7 +1207,7 @@
       var data = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
       var pixels = data.data;
       var r, g, b, a, h, s, l, hsl = [],
-          newPixel = [];
+        newPixel = [];
 
       for (var i = 0, len = pixels.length; i < len; i += 4) {
         hsl = cq.rgbToHsl(pixels[i + 0], pixels[i + 1], pixels[i + 2]);
@@ -1071,7 +1253,7 @@
       var data = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
       var pixels = data.data;
       var r, g, b, a, h, s, l, hsl = [],
-          newPixel = [];
+        newPixel = [];
 
       for (var i = 0, len = pixels.length; i < len; i += 4) {
         pixels[i + 0] = 255 - pixels[i + 0];
@@ -1106,11 +1288,11 @@
 
     },
 
-    wrappedText: function(text, x, y, maxWidth, newlineCallback) {
+    wrappedText: function(text, x, y, maxWidth, lineHeight) {
 
       var words = text.split(" ");
 
-      var lineHeight = this.fontHeight();
+      var lineHeight = lineHeight || this.fontHeight();
 
       var ox = 0;
       var oy = 0;
@@ -1143,8 +1325,6 @@
         var oy = y + i * lineHeight | 0;
 
         var text = lines[i];
-
-        if (newlineCallback) newlineCallback.call(this, x, y + oy);
 
         this.fillText(text, x, oy);
       }
@@ -1377,6 +1557,24 @@
       }
     },
 
+    strokeLine: function(x1, y1, x2, y2) {
+
+      this.beginPath();
+
+      if (typeof x2 === "undefined") {
+        this.moveTo(x1.x, x1.y);
+        this.lineTo(y1.x, y1.y);
+      } else {
+        this.moveTo(x1, y1);
+        this.lineTo(x2, y2);
+      }
+
+      this.stroke();
+
+      return this;
+
+    },
+
     setLineDash: function(dash) {
       if (this.context.setLineDash) {
         this.context.setLineDash(dash);
@@ -1406,6 +1604,107 @@
 
     getImageData: function() {
       return this.context.getImageData.apply(this.context, arguments);
+    },
+
+    /* If you think that I am retarded because I use fillRect to set 
+       pixels - read about premultipled alpha in canvas */
+
+    writeMeta: function(data) {
+
+      var json = JSON.stringify(data);
+
+      json = encodeURIComponent(json);
+
+      var bytes = [];
+
+      for (var i = 0; i < json.length; i++) {
+        bytes.push(json.charCodeAt(i));
+        //      console.log(json[i])
+      }
+
+      bytes.push(127);
+
+      var x = this.width - 1;
+      var y = this.height - 1;
+
+      var pixel = [];
+
+      while (bytes.length) {
+
+        var byte = bytes.shift();
+
+        pixel.unshift(byte * 2);
+        //        console.log(x + String.fromCharCode(byte), byte);
+
+        if (!bytes.length)
+          for (var i = 0; i < 3 - pixel.length; i++) pixel.unshift(254);
+
+        if (pixel.length === 3) {
+          this.fillStyle(cq.color(pixel).toRgb()).fillRect(x, y, 1, 1);
+          pixel = [];
+          x--;
+
+          if (x < 0) {
+            y--;
+            x = this.width - 1;
+          }
+        }
+      }
+
+      return this;
+
+    },
+
+    readMeta: function() {
+
+      var bytes = [];
+
+      var x = this.width - 1;
+      var y = this.height - 1;
+
+      while (true) {
+        var pixel = this.getPixel(x, y);
+
+        var stop = false;
+
+        for (var i = 0; i < 3; i++) {
+
+          if (pixel[2 - i] === 254) stop = true;
+
+          else bytes.push(pixel[2 - i] / 2 | 0);
+
+        }
+
+        if (stop) break;
+
+        x--;
+
+        if (x < 0) {
+          y--;
+          x = this.width - 1;
+          break;
+        }
+      }
+
+
+      var json = "";
+
+      while (bytes.length) {
+        json += String.fromCharCode(bytes.shift());
+      }
+
+      var data = false;
+
+      console.log(json);
+
+      try {
+        data = JSON.parse(decodeURIComponent(json));
+      } catch (e) {
+
+      }
+
+      return data;
+
     },
 
     get width() {
@@ -1438,9 +1737,20 @@
   for (var i = 0; i < methods.length; i++) {
     var name = methods[i];
 
-    // this.debug = true;
-
     if (cq.Layer.prototype[name]) continue;
+
+    cq.Layer.prototype[name] = (function(method) {
+
+      return function() {
+        cq.fastApply(method, this.context, arguments);
+        return this;
+      }
+
+    })(CanvasRenderingContext2D.prototype[name]);
+
+
+    continue;
+
 
     if (!this.debug) {
       // if (!cq.Layer.prototype[name]) cq.Layer.prototype[name] = Function("this.context." + name + ".apply(this.context, arguments); return this;");
@@ -1450,7 +1760,10 @@
       (function(name) {
 
         cq.Layer.prototype[name] = function() {
-          this.context[name].apply(this.context, arguments);
+          // this.context[name].apply(this.context, arguments);
+
+          cq.fastApply(this.context[name], this.context, arguments);
+
           return this;
         }
 
@@ -1571,7 +1884,8 @@
 
     fromHsl: function() {
       var components = arguments[0] instanceof Array ? arguments[0] : arguments;
-      var color = cq.hslToRgb(components[0], components[1], components[2]);
+
+      var color = cq.hslToRgb(parseFloat(components[0]), parseFloat(components[1]), parseFloat(components[2]));
 
       this[0] = color[0];
       this[1] = color[1];
@@ -1581,7 +1895,7 @@
 
     fromHsv: function() {
       var components = arguments[0] instanceof Array ? arguments[0] : arguments;
-      var color = cq.hsvToRgb(components[0], components[1], components[2]);
+      var color = cq.hsvToRgb(parseFloat(components[0]), parseFloat(components[1]), parseFloat(components[2]));
 
       this[0] = color[0];
       this[1] = color[1];
@@ -1649,6 +1963,15 @@
       this.fromHsl(h, s, l);
 
       return this;
+    },
+
+    mix: function(color, amount) {
+      color = cq.color(color);
+
+      for (var i = 0; i < 4; i++)
+        this[i] = cq.mix(this[i], color[i], amount);
+
+      return this;
     }
 
   };
@@ -1672,5 +1995,6 @@
     return cq(img);
   }
 
+  return cq;
 
 })();
