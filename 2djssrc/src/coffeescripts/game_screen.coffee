@@ -1,12 +1,9 @@
-define ["game"]
-, (game) ->
+define ["./Player", "./Point", "game"]
+, (Player, Point, game) ->
 
   game_screen =
     gameWidth: 1600
     gameHeight: 900
-
-    x: 10
-    y: 10
 
     lastTouchX: 0
     lastTouchY: 0
@@ -14,6 +11,10 @@ define ["game"]
     followLastTouch: false
 
     enter: ->
+      game.loadImages "bird_left"
+      game.loadImages "bird_right"
+
+      @player = new Player(new Point(100, 100))
 
     ready: ->
 
@@ -22,24 +23,24 @@ define ["game"]
       @checkTouches()
 
       #make sure we don't go outside the screen bounds
-      if @x < 0
-        @x = 0
+      if @player.position.x < 0
+        @player.position.x = 0
 
-      if @x > @gameWidth - 60
-        @x = @gameWidth - 60
+      if @player.position.x > @gameWidth - 60
+        @player.position.x = @gameWidth - 60
 
-      if @y < 0
-        @y = 0
+      if @player.position.y < 0
+        @player.position.y = 0
 
-      if @y > @gameHeight - 60
-        @y = @gameHeight - 60
+      if @player.position.y > @gameHeight - 60
+        @player.position.y = @gameHeight - 60
 
     render: (delta) ->
       game.layer.clear("#7EC0EE")
-      .fillStyle("red")
-      .fillRect(@x, @y, 50, 50)
+      #.fillStyle("red")
+      #.fillRect(@player.position.x, @player.position.y, 50, 50)
 
-      #game.layer.drawRegion player.getImage(), player.getNextSprite(), x, y
+      game.layer.drawRegion @player.getImage(), @player.getNextSprite(), @player.position.x, @player.position.y
 
     mousedown: (event) ->
 
@@ -63,32 +64,34 @@ define ["game"]
 
     checkKeyPresses: ->
       if game.keyboard.keys["right"]
-        @x+=20
+        @player.position.x+=20
+        @player.orientation = "right"
       else if game.keyboard.keys["left"]
-        @x-=20
+        @player.position.x-=20
+        @player.orientation = "left"
 
       if game.keyboard.keys["up"]
-        @y-=20
+        @player.position.y-=20
       else if game.keyboard.keys["down"]
-        @y+=20
+        @player.position.y+=20
 
     checkTouches: ->
       if @followLastTouch
         console.log(@lastTouchX + " " + @lastTouchY)
         #move the object towards the current touch
 
-        if @lastTouchX >= @x
-          @x+=20
+        if @lastTouchX >= @player.position.x
+          @player.position.x+=20
+          @player.orientation = "right"
 
-        if @lastTouchX < @x
-          @x-=20
+        if @lastTouchX < @player.position.x
+          @player.position.x-=20
+          @player.orientation = "left"
 
-        if @lastTouchY >= @y
-          @y+=20
+        if @lastTouchY >= @player.position.y
+          @player.position.y+=20
 
-        if @lastTouchY < @y
-          @y-=20
-
-
+        if @lastTouchY < @player.position.y
+          @player.position.y-=20
 
   return game_screen

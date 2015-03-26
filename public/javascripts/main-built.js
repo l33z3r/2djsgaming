@@ -14065,36 +14065,74 @@ define('main_menu',["require", "game"], function(require, game) {
   return main_menu;
 });
 
-define('game_screen',["game"], function(game) {
+define('Point',[],function() {
+  var Point;
+  Point = function(x, y) {
+    this.x = x;
+    return this.y = y;
+  };
+  return Point;
+});
+
+define('Player',["./Point", "game"], function(Point, game) {
+  var Player;
+  Player = function(initialPosition) {
+    this.position = initialPosition;
+    this.lastTick = 0;
+    this.duration = 1;
+    return this.orientation = "right";
+  };
+  Player.prototype.getNextSprite = function() {
+    var delta, frame, offset, sprite;
+    delta = (Date.now() - this.lastTick) / 1000;
+    frame = 8 * (delta % this.duration / this.duration) | 0;
+    offset = 19;
+    sprite = [offset + (frame * 109), 28, 109, 100];
+    return sprite;
+  };
+  Player.prototype.getImage = function() {
+    if (this.orientation === "left") {
+      return game.images.bird_left;
+    } else {
+      return game.images.bird_right;
+    }
+  };
+  return Player;
+});
+
+define('game_screen',["./Player", "./Point", "game"], function(Player, Point, game) {
   var game_screen;
   game_screen = {
     gameWidth: 1600,
     gameHeight: 900,
-    x: 10,
-    y: 10,
     lastTouchX: 0,
     lastTouchY: 0,
     followLastTouch: false,
-    enter: function() {},
+    enter: function() {
+      game.loadImages("bird_left");
+      game.loadImages("bird_right");
+      return this.player = new Player(new Point(100, 100));
+    },
     ready: function() {},
     step: function(delta) {
       this.checkKeyPresses();
       this.checkTouches();
-      if (this.x < 0) {
-        this.x = 0;
+      if (this.player.position.x < 0) {
+        this.player.position.x = 0;
       }
-      if (this.x > this.gameWidth - 60) {
-        this.x = this.gameWidth - 60;
+      if (this.player.position.x > this.gameWidth - 60) {
+        this.player.position.x = this.gameWidth - 60;
       }
-      if (this.y < 0) {
-        this.y = 0;
+      if (this.player.position.y < 0) {
+        this.player.position.y = 0;
       }
-      if (this.y > this.gameHeight - 60) {
-        return this.y = this.gameHeight - 60;
+      if (this.player.position.y > this.gameHeight - 60) {
+        return this.player.position.y = this.gameHeight - 60;
       }
     },
     render: function(delta) {
-      return game.layer.clear("#7EC0EE").fillStyle("red").fillRect(this.x, this.y, 50, 50);
+      game.layer.clear("#7EC0EE");
+      return game.layer.drawRegion(this.player.getImage(), this.player.getNextSprite(), this.player.position.x, this.player.position.y);
     },
     mousedown: function(event) {},
     mouseup: function(event) {},
@@ -14112,30 +14150,34 @@ define('game_screen',["game"], function(game) {
     touchmove: function(event) {},
     checkKeyPresses: function() {
       if (game.keyboard.keys["right"]) {
-        this.x += 20;
+        this.player.position.x += 20;
+        this.player.orientation = "right";
       } else if (game.keyboard.keys["left"]) {
-        this.x -= 20;
+        this.player.position.x -= 20;
+        this.player.orientation = "left";
       }
       if (game.keyboard.keys["up"]) {
-        return this.y -= 20;
+        return this.player.position.y -= 20;
       } else if (game.keyboard.keys["down"]) {
-        return this.y += 20;
+        return this.player.position.y += 20;
       }
     },
     checkTouches: function() {
       if (this.followLastTouch) {
         console.log(this.lastTouchX + " " + this.lastTouchY);
-        if (this.lastTouchX >= this.x) {
-          this.x += 20;
+        if (this.lastTouchX >= this.player.position.x) {
+          this.player.position.x += 20;
+          this.player.orientation = "right";
         }
-        if (this.lastTouchX < this.x) {
-          this.x -= 20;
+        if (this.lastTouchX < this.player.position.x) {
+          this.player.position.x -= 20;
+          this.player.orientation = "left";
         }
-        if (this.lastTouchY >= this.y) {
-          this.y += 20;
+        if (this.lastTouchY >= this.player.position.y) {
+          this.player.position.y += 20;
         }
-        if (this.lastTouchY < this.y) {
-          return this.y -= 20;
+        if (this.lastTouchY < this.player.position.y) {
+          return this.player.position.y -= 20;
         }
       }
     }
