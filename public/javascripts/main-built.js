@@ -14033,6 +14033,9 @@ define('game',["require", "playground"], function(require, playground) {
     width: 1600,
     height: 900,
     scaleToFit: true,
+    paths: {
+      images: "/images/"
+    },
     create: function() {},
     ready: function() {
       return this.setState(require("main_menu"));

@@ -7,6 +7,10 @@ define ["require", "playground"], (require, playground) ->
     height: 900
     scaleToFit: true
 
+    paths: {
+      images: "/images/"
+    }
+
     create: ->
 
 
