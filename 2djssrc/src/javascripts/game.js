@@ -1,0 +1,14 @@
+define(["require", "playground"], function(require, playground) {
+  var game;
+  game = playground({
+    mouseToTouch: true,
+    width: 1600,
+    height: 900,
+    scaleToFit: true,
+    create: function() {},
+    ready: function() {
+      return this.setState(require("main_menu"));
+    }
+  });
+  return game;
+});
